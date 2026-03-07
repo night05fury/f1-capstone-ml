@@ -115,23 +115,35 @@ def strategy_adjustment(grid, weather, tyre, pit, form, risk, aggro, pressure):
     return delta, effects
 
 # --------------------------------
-# PROJECTED POINTS
+# POSITION / POINTS
 # -------------------------------
-def projected_points(prob):
-    # Accept either a probability ratio (0-1) or percentage (0-100).
+def normalize_probability(prob):
     prob = float(prob)
     prob_pct = prob * 100 if 0 <= prob <= 1 else prob
-    prob_pct = min(max(prob_pct, 0.0), 100.0)
+    return min(max(prob_pct, 0.0), 100.0)
 
-    # Modern F1 (2010+): P1=25, P2=18, P3=15 -> avg podium = 19.33 pts.
-    avg_podium_points = (25 + 18 + 15) / 3
-    return round((prob_pct / 100) * avg_podium_points, 2)
+
+def official_points_for_position(position):
+    points_table = {
+        1: 25,
+        2: 18,
+        3: 15,
+        4: 12,
+        5: 10,
+        6: 8,
+        7: 6,
+        8: 4,
+        9: 2,
+        10: 1,
+    }
+    return points_table.get(position, 0)
 
 # --------------------------------------------------
 # EXPECTED POSITION
 # --------------------------------------------------
 def expected_position(prob):
     """Map podium probability to expected finish position using calibrated tiers."""
+    prob = normalize_probability(prob)
     if prob >= 90: return 1
     if prob >= 75: return 2
     if prob >= 60: return 3
@@ -142,6 +154,11 @@ def expected_position(prob):
     if prob >= 8: return 12
     if prob >= 3: return 15
     return 18
+
+
+def projected_points(prob):
+    position = expected_position(prob)
+    return float(official_points_for_position(position))
 
 # --------------------------------------------------
 # MONTE CARLO (with uncertainty modelling)
