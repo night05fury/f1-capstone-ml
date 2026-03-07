@@ -118,9 +118,14 @@ def strategy_adjustment(grid, weather, tyre, pit, form, risk, aggro, pressure):
 # PROJECTED POINTS
 # -------------------------------
 def projected_points(prob):
-    # Modern F1 (2010+): P1=25, P2=18, P3=15 → avg podium = 19.33 pts
-    avg_podium_points = 19.33
-    return round((prob / 100) * avg_podium_points, 2)
+    # Accept either a probability ratio (0-1) or percentage (0-100).
+    prob = float(prob)
+    prob_pct = prob * 100 if 0 <= prob <= 1 else prob
+    prob_pct = min(max(prob_pct, 0.0), 100.0)
+
+    # Modern F1 (2010+): P1=25, P2=18, P3=15 -> avg podium = 19.33 pts.
+    avg_podium_points = (25 + 18 + 15) / 3
+    return round((prob_pct / 100) * avg_podium_points, 2)
 
 # --------------------------------------------------
 # EXPECTED POSITION
