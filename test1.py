@@ -2,18 +2,14 @@ import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
 st.set_page_config(page_title="F1 Race Intelligence Engine", page_icon="🏎️", layout="wide")
 
 st.title("🏎️ Formula 1 Race Intelligence Engine")
 st.markdown("Machine Learning powered race outcome simulator (Modern F1 Era ≥ 2010)")
 
-# --------------------------------------------------
-# STYLE
-# --------------------------------------------------
+# stylinging for metrics
 st.markdown("""
 <style>
 div[data-testid="stMetric"] {
@@ -25,9 +21,9 @@ div[data-testid="stMetric"] {
 </style>
 """, unsafe_allow_html=True)
 
-# --------------------------------------------------
+
 # LOAD MODEL
-# --------------------------------------------------
+
 @st.cache_resource
 def load_model_and_features():
     try:
@@ -36,12 +32,19 @@ def load_model_and_features():
         return model, feature_cols
     except:
         return None, []
+@st.cache_data
+def load_model_comparison():
+    try:
+        return pd.read_csv("model_comparison.csv")
+    except:
+        return pd.DataFrame()
 
+comparison_df = load_model_comparison()
 model, feature_cols = load_model_and_features()
 
 # --------------------------------------------------
 # LOAD DATASETS
-# --------------------------------------------------
+# --------------------------------------
 @st.cache_data
 def load_data():
     circuits = pd.read_csv("datasets/circuits.csv")
@@ -61,18 +64,18 @@ def load_data():
 
 drivers_df, constructors_df, circuits_df = load_data()
 
-# --------------------------------------------------
+# -------------------------------
 # ENCODERS
-# --------------------------------------------------
+# -------------------------------
 def encode_weather(w):
     return {"Dry":0,"Mixed":1,"Wet":2}[w]
 
 def encode_tyre(t):
     return {"Conservative":0,"Balanced":1,"Aggressive":2}[t]
 
-# --------------------------------------------------
+# ------------------------------
 # STRATEGY ADJUSTMENT
-# --------------------------------------------------
+# -----------------------------
 def strategy_adjustment(grid, weather, tyre, pit, form, risk, aggro, pressure):
 
     effects = {}
@@ -94,9 +97,9 @@ def strategy_adjustment(grid, weather, tyre, pit, form, risk, aggro, pressure):
     delta = sum(effects.values())
     return delta, effects
 
-# --------------------------------------------------
+# --------------------------------
 # PROJECTED POINTS
-# --------------------------------------------------
+# -------------------------------
 def projected_points(prob):
     avg_podium_points = 19.33
     return round((prob/100)*avg_podium_points,2)
@@ -157,9 +160,6 @@ with st.sidebar:
 # --------------------------------------------------
 tab1,tab2,tab3=st.tabs(["Race Simulation","Model Brain","Circuits"])
 
-# --------------------------------------------------
-# TAB 1
-# --------------------------------------------------
 with tab1:
 
     if run_prediction:
@@ -181,6 +181,10 @@ with tab1:
         "teammate_pressure":pressure
         }
 
+        # ------------------------------
+        # BATCH GRID SIMULATION
+        # ------------------------------
+
         sim_inputs=[]
         for gp in range(1,21):
             d=base_input.copy()
@@ -192,76 +196,174 @@ with tab1:
         base_probs=model.predict_proba(sim_df)[:,1]*100 if model else np.full(20,50)
 
         final_probs=[]
+        strategy_deltas=[]
+
         for i,gp in enumerate(range(1,21)):
 
-            delta,effects=strategy_adjustment(gp,weather,tyre,pit,form,risk,aggro,pressure)
+            delta,_=strategy_adjustment(gp,weather,tyre,pit,form,risk,aggro,pressure)
+
+            strategy_deltas.append(delta)
 
             final_probs.append(float(np.clip(base_probs[i]+delta,0,100)))
 
-        user_prob=final_probs[grid-1]
-        user_base=base_probs[grid-1]
+        # ------------------------------
+        # USER GRID RESULT
+        # ------------------------------
 
-        proj_pts=projected_points(user_prob)
-        pos=expected_position(user_prob)
-        mc=monte_carlo(user_prob)
+        user_base = base_probs[grid-1]
+        user_delta = strategy_deltas[grid-1]
+        user_prob = final_probs[grid-1]
 
-        constructor_pts=proj_pts*2
-        season_projection=proj_pts*8
+        proj_pts = projected_points(user_prob)
+        pos = expected_position(user_prob)
+        mc = monte_carlo(user_prob)
 
-        col1,col2=st.columns(2)
+        constructor_pts = proj_pts * 2
+        season_projection = proj_pts * 8
+
+        # ------------------------------
+        # METRICS DISPLAY
+        # ------------------------------
+
+        col1,col2 = st.columns(2)
 
         with col1:
 
-            st.metric("Podium Probability",f"{user_prob:.1f}%")
-            st.metric("Projected Points",f"{proj_pts} pts")
-            st.metric("Expected Finish",f"P{pos}")
+            st.metric("ML Predicted Podium Probability",
+                      f"{user_base:.1f}%")
 
-            st.metric("Monte Carlo Podium Chance",f"{mc}%")
+            st.metric("Strategy Impact",
+                      f"{user_delta:+.1f}%")
+
+            st.metric("Final Adjusted Podium Probability",
+                      f"{user_prob:.1f}%")
+
+            st.metric("Expected Finish Position",
+                      f"P{pos}")
+
+            st.metric("Monte Carlo Podium Chance",
+                      f"{mc}%")
 
         with col2:
 
-            st.metric("Constructor Expected Points",f"{constructor_pts:.1f}")
-            st.metric("Season Projection",f"{season_projection:.1f}")
+            st.metric("Projected Championship Points",
+                      f"{proj_pts} pts")
+
+            st.metric("Constructor Expected Points",
+                      f"{constructor_pts:.1f}")
+
+            st.metric("Season Projection",
+                      f"{season_projection:.1f}")
+
+        # ------------------------------
+        # STRATEGY BREAKDOWN
+        # ------------------------------
 
         st.subheader("Strategy Impact Breakdown")
 
         _,effects=strategy_adjustment(grid,weather,tyre,pit,form,risk,aggro,pressure)
-        st.bar_chart(pd.DataFrame.from_dict(effects,orient="index",columns=["Impact"]))
 
-        st.subheader("Grid Sensitivity")
+        effects_df = pd.DataFrame.from_dict(effects,orient="index",columns=["Impact"])
+
+        st.bar_chart(effects_df)
+
+        # ------------------------------
+        # GRID SENSITIVITY
+        # ------------------------------
+
+        st.subheader("Grid Position Sensitivity")
 
         chart_df=pd.DataFrame({
-        "Podium Probability":final_probs,
+        "ML Prediction":base_probs,
+        "Strategy Adjusted":final_probs,
         "Projected Points":[projected_points(p) for p in final_probs]
         },index=range(1,21))
 
+        chart_df.index.name="Grid Position"
+
         st.line_chart(chart_df)
+
+        # ------------------------------
+        # DOWNLOAD REPORT
+        # ------------------------------
 
         report=pd.DataFrame({
         "Driver":[driver],
         "Grid":[grid],
-        "Podium Probability":[user_prob],
+        "ML Prediction":[user_base],
+        "Strategy Impact":[user_delta],
+        "Final Prediction":[user_prob],
         "Projected Points":[proj_pts]
         })
 
-        st.download_button("Download Race Report",report.to_csv(index=False),"race_report.csv")
+        st.download_button(
+            "Download Race Report",
+            report.to_csv(index=False),
+            "race_report.csv"
+        )
 
     else:
+
         st.info("Select parameters in the sidebar and click Run Simulation")
+
 
 # --------------------------------------------------
 # TAB 2
 # --------------------------------------------------
 with tab2:
 
-    if model:
+    st.header("Model Intelligence & Comparison")
 
-        importance=pd.DataFrame({
-        "Feature":feature_cols,
-        "Importance":model.feature_importances_
-        }).sort_values("Importance")
+    if model is not None and feature_cols:
 
-        st.bar_chart(importance.set_index("Feature"))
+        st.subheader("Feature Importance")
+
+        importance_df = pd.DataFrame({
+            "Feature": feature_cols,
+            "Importance": model.feature_importances_
+        }).sort_values("Importance", ascending=True)
+
+        st.bar_chart(importance_df.set_index("Feature"))
+
+    else:
+        st.warning("Model not loaded. Cannot display feature importance.")
+
+    st.divider()
+
+    # ------------------------------
+    # MODEL COMPARISON
+    # ------------------------------
+
+    if not comparison_df.empty:
+
+        st.subheader("Model Performance Comparison")
+
+        st.dataframe(comparison_df, use_container_width=True)
+
+        st.subheader("ROC-AUC Comparison")
+
+        roc_chart = comparison_df.set_index("Model")[["ROC AUC"]]
+
+        st.bar_chart(roc_chart)
+
+        st.info(
+        """
+        Multiple models were evaluated during development including Logistic Regression,
+        Random Forest, and Gradient Boosting.
+
+        Random Forest was selected as the final production model because it achieved the
+        highest ROC-AUC score and demonstrated strong generalization across cross-validation
+        folds.
+
+        Tree-based models are particularly effective for this problem because they capture
+        nonlinear relationships between race features such as grid position, constructor
+        performance, and driver form.
+        """
+        )
+
+    else:
+        st.warning("Model comparison results not found. Run the training notebook first.")
+
 
 # --------------------------------------------------
 # TAB 3
