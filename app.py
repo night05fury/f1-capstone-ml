@@ -683,6 +683,17 @@ with tabs[6]:
 with tabs[7]:
     st.header("🎯 Strategy Sensitivity Analysis")
 
+    st.markdown("""
+    **What is this?** This tab shows how changing each strategy parameter affects the 
+    predicted podium probability — while keeping all other parameters fixed at the values 
+    you selected in the sidebar.
+
+    **How to read the graphs:** Each chart plots one strategy parameter (X-axis) against 
+    the **average podium probability across all 20 grid positions** (Y-axis). A steep 
+    upward curve means that parameter has a strong positive effect; a steep downward 
+    curve means increasing it hurts your chances.
+    """)
+
     if run_prediction:
         with st.spinner("Analyzing parameter sensitivity..."):
             driver_id, constructor_id, circuit_id = resolve_ids(driver, constructor, circuit)
@@ -697,24 +708,92 @@ with tabs[7]:
                 weather, tyre, pit, form, risk, aggro, pressure
             )
 
-            param_names = {
-                "pit": "Pit Crew (Rating)",
-                "form": "Recent Form (%)",
-                "risk": "Reliability Risk (%)",
-                "aggro": "Aggression (%)",
-                "pressure": "Teammate Pressure (%)",
+            # Parameter metadata: display name + explanation
+            param_info = {
+                "pit": {
+                    "display": "Pit Crew (Rating)",
+                    "explanation": """
+                    **Pit Crew Rating (1–10)** measures how fast and reliable the pit crew performs tyre changes.
+                    - **X-axis:** Pit crew rating from 1 (slowest) to 10 (fastest).
+                    - **Y-axis:** Average podium probability (%) across all grid positions.
+                    - **What to look for:** A higher rating means faster pit stops, which translates to less time lost 
+                      in the pit lane. Teams like Red Bull and McLaren typically score 8–10. A rating below 5 actively 
+                      hurts podium chances.
+                    """,
+                },
+                "form": {
+                    "display": "Recent Form (%)",
+                    "explanation": """
+                    **Recent Form (0–100%)** captures the driver's momentum over the last few races.
+                    - **X-axis:** Form percentage — 0% means poor recent results, 100% means dominant recent form.
+                    - **Y-axis:** Average podium probability (%).
+                    - **What to look for:** The baseline is 50% (average). Values above 50% boost podium 
+                      chances, while below 50% reduces them. A steep curve here means form is a major 
+                      differentiator for this driver/circuit combination.
+                    """,
+                },
+                "risk": {
+                    "display": "Reliability Risk (%)",
+                    "explanation": """
+                    **Reliability Risk (0–100%)** represents the likelihood of a mechanical failure or DNF.
+                    - **X-axis:** Risk percentage — 0% means bulletproof reliability, 100% means constant breakdowns.
+                    - **Y-axis:** Average podium probability (%).
+                    - **What to look for:** This curve should slope **downward** — higher risk always hurts. 
+                      The steepness shows how punishing unreliability is. Modern F1 cars typically have 5–15% risk; 
+                      values above 30% significantly erode podium chances.
+                    """,
+                },
+                "aggro": {
+                    "display": "Aggression (%)",
+                    "explanation": """
+                    **Aggression (0–100%)** reflects the driver's overtaking tendency and risk appetite on track.
+                    - **X-axis:** Aggression level — 0% is conservative/defensive, 100% is maximum attack.
+                    - **Y-axis:** Average podium probability (%).
+                    - **What to look for:** Moderate aggression (~50–70%) tends to be optimal. Too little means 
+                      missed overtaking opportunities; too much risks collisions and penalties. The curve's 
+                      shape shows the sweet spot for the current conditions.
+                    """,
+                },
+                "pressure": {
+                    "display": "Teammate Pressure (%)",
+                    "explanation": """
+                    **Teammate Pressure (0–100%)** represents how much competition from the teammate affects focus.
+                    - **X-axis:** Pressure intensity — 0% means no internal team rivalry, 100% means intense pressure.
+                    - **Y-axis:** Average podium probability (%).
+                    - **What to look for:** This curve should slope **downward** — more pressure generally 
+                      reduces performance. High-pressure scenarios (e.g., championship battles between teammates) 
+                      can cost several percentage points in podium probability.
+                    """,
+                },
             }
 
-            for param, param_display in param_names.items():
-                st.subheader(f"Impact of {param_display}")
+            for param, info in param_info.items():
+                st.subheader(f"Impact of {info['display']}")
+                st.markdown(info["explanation"])
 
                 sensitivity_df = pd.DataFrame({
-                    param_display: sensitivity[param]["values"],
-                    "Avg Podium Prob": sensitivity[param]["predictions"]
+                    info["display"]: sensitivity[param]["values"],
+                    "Avg Podium Prob (%)": sensitivity[param]["predictions"]
                 })
-                st.line_chart(sensitivity_df.set_index(param_display))
+                st.line_chart(sensitivity_df.set_index(info["display"]))
+
+            # Summary guide
+            st.divider()
+            st.markdown("""
+            ### 📖 How to Use These Insights
+
+            1. **Find the steepest curves** — those parameters matter most for this scenario.
+               Focus your strategy on the parameters with the biggest impact.
+            2. **Look for diminishing returns** — if a curve flattens at the high end, pushing 
+               that parameter further won't help much.
+            3. **Identify risk thresholds** — for parameters like Reliability Risk and Teammate 
+               Pressure, find the point where the curve drops sharply. Stay below that threshold.
+            4. **Compare across scenarios** — change weather or circuit in the sidebar and re-run 
+               to see how sensitivity shifts. Wet weather, for example, amplifies the impact of 
+               aggression and pit crew quality.
+            """)
     else:
-        st.info("Run a simulation first, then this tab will show sensitivity analysis.")
+        st.info("👈 Run a simulation first (click **Run Simulation** in the sidebar), then come back here to see how each strategy parameter affects your prediction.")
 
 
 
